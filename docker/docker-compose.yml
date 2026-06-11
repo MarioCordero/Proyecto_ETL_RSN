@@ -1,0 +1,82 @@
+version: "3.9"
+
+# =============================================================================
+# Proyecto ETL RSN - Data Warehouse Local (Fase 3)
+# =============================================================================
+# Levanta un stack de PostgreSQL (DW) + pgAdmin para administración visual.
+# SEGURIDAD: Las credenciales se leen desde un archivo .env (nunca hardcodeadas).
+# Ejecutar: docker compose --env-file .env up -d
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — Data Warehouse principal
+  # ---------------------------------------------------------------------------
+  postgres_dw:
+    image: postgres:16-alpine
+    container_name: rsn_postgres_dw
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DW_DB_NAME}
+      POSTGRES_USER:     ${DW_DB_USER}
+      POSTGRES_PASSWORD: ${DW_DB_PASSWORD}
+    ports:
+      # Expuesto solo en localhost para minimizar superficie de ataque
+      # TODO(security): En producción, eliminar este mapeo de puerto y acceder
+      #   solo desde la red interna de Docker o mediante mTLS.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Script DDL que se ejecuta automáticamente en el primer arranque
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      # Volumen persistente para los datos
+      - postgres_dw_data:/var/lib/postgresql/data
+    networks:
+      - rsn_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DW_DB_USER} -d ${DW_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # pgAdmin 4 — Interfaz web de administración de la base de datos
+  # ---------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: rsn_pgadmin
+    restart: unless-stopped
+    depends_on:
+      postgres_dw:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      # Deshabilita la telemetría de pgAdmin
+      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "True"
+      PGADMIN_CONFIG_LOGIN_BANNER: '"Acceso restringido — Solo uso interno RSN"'
+      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: 40
+    ports:
+      # Accesible en http://localhost:5050
+      - "127.0.0.1:5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - rsn_network
+
+# =============================================================================
+# Redes
+# =============================================================================
+networks:
+  rsn_network:
+    driver: bridge
+    name: rsn_network
+
+# =============================================================================
+# Volúmenes persistentes
+# =============================================================================
+volumes:
+  postgres_dw_data:
+    name: rsn_postgres_dw_data
+  pgadmin_data:
+    name: rsn_pgadmin_data
