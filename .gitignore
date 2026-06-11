@@ -1,0 +1,33 @@
+# Archivos de entorno — NUNCA versionar
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Logs del pipeline
+*.log
+
+# Datos fuente (pueden ser grandes; usar git-lfs si se necesita versionado)
+data/raw/*.txt
+data/raw/*.csv
+
+# Volúmenes Docker generados localmente
+postgres_dw_data/
+pgadmin_data/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
