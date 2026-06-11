@@ -21,9 +21,7 @@ services:
       POSTGRES_USER:     ${DW_DB_USER}
       POSTGRES_PASSWORD: ${DW_DB_PASSWORD}
     ports:
-      # Expuesto solo en localhost para minimizar superficie de ataque
-      # TODO(security): En producción, eliminar este mapeo de puerto y acceder
-      #   solo desde la red interna de Docker o mediante mTLS.
+      # Expuesto solo en localhost para minimizar superficie de ataque, se va a poner en producción?
       - "127.0.0.1:5432:5432"
     volumes:
       # Script DDL que se ejecuta automáticamente en el primer arranque
@@ -40,7 +38,7 @@ services:
       start_period: 30s
 
   # ---------------------------------------------------------------------------
-  # pgAdmin 4 — Interfaz web de administración de la base de datos
+  # pgAdmin 4 — Interfaz web de administración de la base de datos, para ver los datos bien lindos
   # ---------------------------------------------------------------------------
   pgadmin:
     image: dpage/pgadmin4:8
@@ -57,7 +55,7 @@ services:
       PGADMIN_CONFIG_LOGIN_BANNER: '"Acceso restringido — Solo uso interno RSN"'
       PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: 40
     ports:
-      # Accesible en http://localhost:5050
+      # Acceder en http://localhost:5050
       - "127.0.0.1:5050:80"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
