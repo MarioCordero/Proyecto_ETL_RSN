@@ -1,11 +1,9 @@
-version: "3.9"
-
 # =============================================================================
 # Proyecto ETL RSN - Data Warehouse Local (Fase 3)
 # =============================================================================
 # Levanta un stack de PostgreSQL (DW) + pgAdmin para administración visual.
 # SEGURIDAD: Las credenciales se leen desde un archivo .env (nunca hardcodeadas).
-# Ejecutar: docker compose --env-file .env up -d
+# Ejecutar: sudo docker compose --env-file ../.env up -d
 # =============================================================================
 
 services:
@@ -61,6 +59,24 @@ services:
       - pgadmin_data:/var/lib/pgadmin
     networks:
       - rsn_network
+
+  # ---------------------------------------------------------------------------
+  # Apache Superset — Plataforma avanzada de BI
+  # ---------------------------------------------------------------------------
+  superset:
+    image: apache/superset:latest
+    container_name: rsn_superset
+    restart: unless-stopped
+    ports:
+      # Acceder en http://localhost:8088
+      - "127.0.0.1:8088:8088"
+    environment:
+      SUPERSET_SECRET_KEY: "rsn-proyecto-secreto-cambiar"
+    networks:
+      - rsn_network
+    depends_on:
+      postgres_dw:
+        condition: service_healthy
 
 # =============================================================================
 # Redes

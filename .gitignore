@@ -31,3 +31,5 @@ pgadmin_data/
 .vscode/
 *.swp
 *.swo
+
+.env
