@@ -60,7 +60,7 @@ services:
       - rsn_network
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DW_DB_USER} -d ${DW_DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${RDW_DB_USER} -d ${RDW_DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5

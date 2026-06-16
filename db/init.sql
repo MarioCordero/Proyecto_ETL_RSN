@@ -16,7 +16,7 @@ SET search_path TO dw;
 -- dim_tiempo: Dimensión temporal con granularidad de hora
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS dw.dim_tiempo (
-    id_tiempo SERIAL PRIMARY KEY,
+    id_tiempo UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     anio SMALLINT NOT NULL CHECK (
         anio BETWEEN 1900 AND 2100
     ),
@@ -46,7 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_dim_tiempo_anio_mes ON dw.dim_tiempo(anio, mes);
 -- dim_ubicacion: Dimensión geográfica
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS dw.dim_ubicacion (
-    id_ubicacion SERIAL PRIMARY KEY,
+    id_ubicacion UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     latitud NUMERIC(9, 6) NOT NULL CHECK (
         latitud BETWEEN -90 AND 90
     ),
@@ -61,9 +61,17 @@ CREATE INDEX IF NOT EXISTS idx_dim_ubicacion_zona ON dw.dim_ubicacion(zona_geogr
 -- dim_estacion: Dimensión de la estación sísmica que registró el evento
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS dw.dim_estacion (
-    id_estacion SERIAL PRIMARY KEY,
-    codigo_estacion VARCHAR(20) NOT NULL UNIQUE,
-    tipo_sensor VARCHAR(100) NOT NULL DEFAULT 'Desconocido',
+    id_estacion UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    codigo_red VARCHAR(2) NOT NULL,
+    codigo_estacion VARCHAR(5) NOT NULL,
+    descripcion_sensor VARCHAR(100) NOT NULL DEFAULT 'Desconocido',
+    canal VARCHAR(3) NOT NULL,
+    latitud NUMERIC(9, 6) NOT NULL CHECK (
+        latitud BETWEEN -90 AND 90
+    ),
+    longitud NUMERIC(9, 6) NOT NULL CHECK (
+        longitud BETWEEN -180 AND 180
+    ),
     estado_operativo VARCHAR(50) NOT NULL DEFAULT 'Activo' CHECK (
         estado_operativo IN (
             'Activo',
@@ -81,11 +89,11 @@ COMMENT ON TABLE dw.dim_estacion IS 'Dimensión de estaciones de la Red Sismoló
 -- fact_evento_sismico: Tabla de hechos central del esquema estrella
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS dw.fact_evento_sismico (
-    id_hecho BIGSERIAL PRIMARY KEY,
+    id_hecho UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     -- Claves foráneas hacia las dimensiones
-    id_ubicacion INT NOT NULL REFERENCES dw.dim_ubicacion(id_ubicacion) ON DELETE RESTRICT,
-    id_tiempo INT NOT NULL REFERENCES dw.dim_tiempo(id_tiempo) ON DELETE RESTRICT,
-    id_estacion INT REFERENCES dw.dim_estacion(id_estacion) ON DELETE
+    id_ubicacion UUID NOT NULL REFERENCES dw.dim_ubicacion(id_ubicacion) ON DELETE RESTRICT,
+    id_tiempo UUID NOT NULL REFERENCES dw.dim_tiempo(id_tiempo) ON DELETE RESTRICT,
+    id_estacion UUID REFERENCES dw.dim_estacion(id_estacion) ON DELETE
     SET NULL,
         -- Métricas del evento
         magnitud NUMERIC(4, 2) NOT NULL CHECK (magnitud >= 0),
