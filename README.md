@@ -82,12 +82,20 @@ Abrir en el navegador: **[http://localhost:5050](http://localhost:5050)**
 - **Email:** valor de `PGADMIN_EMAIL` en el `.env`
 - **Password:** valor de `PGADMIN_PASSWORD` en el `.env`
 
-**Registrar el servidor PostgreSQL en pgAdmin:**
+**Registrar el servidor PostgreSQL del Data Warehouse en pgAdmin:**
 1. Click derecho en _Servers_ → _Register_ → _Server_
 2. **General → Name:** `RSN Data Warehouse`
 3. **Connection → Host:** `rsn_postgres_dw` (nombre del servicio Docker)
 4. **Connection → Port:** `5432`
-5. **Connection → Database:** `rsn_dw`
+5. **Connection → Database:** valor DW_DB_NAME  del `.env`
+6. **Connection → Username / Password:** valores del `.env`
+
+**Registrar el servidor PostgreSQL de datos del fdsn en pgAdmin:**
+1. Click derecho en _Servers_ → _Register_ → _Server_
+2. **General → Name:** `FDSN Data Base`
+3. **Connection → Host:** `fdsn_postgres_db` (nombre del servicio Docker)
+4. **Connection → Port:** `5432`
+5. **Connection → Database:** valor RDB_DB_NAME  del `.env`
 6. **Connection → Username / Password:** valores del `.env`
 
 ---

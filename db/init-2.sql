@@ -1,12 +1,12 @@
 -- Crear esquema dedicado para la base relacional
-CREATE SCHEMA IF NOT EXISTS relationaldb;
+CREATE SCHEMA IF NOT EXISTS rdb;
 -- Establecer el esquema por defecto para este script
-SET search_path TO relationaldb;
+SET search_path TO rdb;
 
 
 -- Exportar la informacion de las estaciones
 -- 1. Crear tabla temporal para cargar los datos del archivo txt.
-CREATE TABLE IF NOT EXISTS relationaldb.estaciones_staging (
+CREATE TABLE IF NOT EXISTS rdb.estaciones_staging (
     network      VARCHAR(5),
     station      VARCHAR(5),
     latitude     DECIMAL(9,6),
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS relationaldb.estaciones_staging (
 );
 
 -- 2. Crear tabla para guardar la informacion de las estaciones
-CREATE TABLE IF NOT EXISTS relationaldb.estaciones (
+CREATE TABLE IF NOT EXISTS rdb.estaciones (
     codigo_red          VARCHAR(5) NOT NULL,
     codigo_estacion     VARCHAR(5),
     latitud             DECIMAL(9,6) NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS relationaldb.estaciones (
 );
 
 -- 3. Copiar los datos del archivo txt a estaciones_staging
-COPY relationaldb.estaciones_staging
+COPY rdb.estaciones_staging
 FROM '/import/stations_sites.txt'
 WITH (
     FORMAT csv,
@@ -40,7 +40,7 @@ WITH (
 );
 
 -- 4. pasar a estaciones unicamente las columnas relevantes
-INSERT INTO relationaldb.estaciones (
+INSERT INTO rdb.estaciones (
     codigo_red,
     codigo_estacion,
     latitud,
@@ -55,12 +55,12 @@ SELECT DISTINCT
     longitude,
     elevation,
     TRIM(site_name)
-FROM relationaldb.estaciones_staging
+FROM rdb.estaciones_staging
 ON CONFLICT (codigo_estacion)
 DO NOTHING;
 
 -- 5. Borrar la tabla temporal estaciones_staging
-DROP TABLE relationaldb.estaciones_staging;
+DROP TABLE rdb.estaciones_staging;
 
 DO $$ BEGIN RAISE NOTICE '✅ Import de estaciones completado';
 END $$;
@@ -68,7 +68,7 @@ END $$;
 
 -- Exportar la informacion de los instrumetos de las estaciones
 -- 1. Crear tabla temporal para cargar los datos del archivo txt.
-CREATE TABLE IF NOT EXISTS relationaldb.instrumentos_staging (
+CREATE TABLE IF NOT EXISTS rdb.instrumentos_staging (
     network              VARCHAR(5),
     station              VARCHAR(5),
     location             VARCHAR(100),
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS relationaldb.instrumentos_staging (
 );
 
 -- 2. Crear tabla para guardar la informacion de las estaciones
-CREATE TABLE IF NOT EXISTS relationaldb.instrumentos (
+CREATE TABLE IF NOT EXISTS rdb.instrumentos (
     id                      UUID DEFAULT gen_random_uuid(),
     codigo_estacion         VARCHAR(5) NOT NULL,
     canal                   VARCHAR(3) NOT NULL,
@@ -111,11 +111,11 @@ CREATE TABLE IF NOT EXISTS relationaldb.instrumentos (
         PRIMARY KEY (id),
     CONSTRAINT instrumentos_codigo_estacion_estaciones_FK
         FOREIGN KEY(codigo_estacion)
-        REFERENCES relationaldb.estaciones(codigo_estacion)
+        REFERENCES rdb.estaciones(codigo_estacion)
 );
 
 -- 3. Copiar los datos del archivo txt a instrumentos_staging
-COPY relationaldb.instrumentos_staging
+COPY rdb.instrumentos_staging
 FROM '/import/stations_channel.txt'
 WITH (
     FORMAT csv,
@@ -124,7 +124,7 @@ WITH (
 );
 
 -- 4. pasar a estaciones unicamente las columnas relevantes
-INSERT INTO relationaldb.instrumentos (
+INSERT INTO rdb.instrumentos (
     codigo_estacion,
     canal,
     latitud,
@@ -157,10 +157,10 @@ SELECT DISTINCT
     sample_rate,
     start_time,
     end_time
-FROM relationaldb.instrumentos_staging;
+FROM rdb.instrumentos_staging;
 
 -- 5. Borrar la tabla temporal instrumentos_staging
-DROP TABLE relationaldb.instrumentos_staging;
+DROP TABLE rdb.instrumentos_staging;
 
 DO $$ BEGIN RAISE NOTICE '✅ Import de instrumentos completado';
 END $$;
