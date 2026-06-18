@@ -161,6 +161,13 @@ def load_to_dw(eventos: list[dict], stations: list[dict], stats: dict,
             station_map = _load_dim_estacion(cur, stations)
             map_tiempo, map_ubic, map_clas = _upsert_and_map(cur, eventos)
 
+            # Carga inicial (full load): la tabla de hechos se reemplaza por
+            # completo, de modo que volver a correrla es idempotente y no
+            # duplica registros. La carga incremental solo agrega lo nuevo.
+            if not incremental:
+                cur.execute("TRUNCATE dw.fact_evento_sismico")
+                logger.info("Full load: tabla de hechos truncada antes de recargar.")
+
             existentes = _existing_signatures(cur) if incremental else set()
 
             filas_fact = []
