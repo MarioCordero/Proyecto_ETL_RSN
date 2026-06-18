@@ -1,210 +1,190 @@
-# Proyecto ETL RSN — Fase 3: Data Warehouse Local 🌋
+# Proyecto ETL RSN — Data Warehouse Sísmico 🌋
 
-Pipeline ETL para la carga del **Catálogo Sísmico de la Red Sismológica Nacional (RSN)** a un Data Warehouse PostgreSQL con esquema estrella.
+Pipeline **ETL (Extract – Transform – Load)** que integra **tres fuentes de datos en formatos distintos** sobre sismicidad en Costa Rica y las carga en un **Data Warehouse PostgreSQL con esquema estrella**, listo para dashboards y reportes.
+
+> Curso CI-0141 Bases de Datos Avanzadas — ECCI, Universidad de Costa Rica.
 
 ---
 
-## 📁 Estructura del Proyecto
+## 🔌 Fuentes de datos (3 formatos)
+
+| # | Formato | Fuente | Origen |
+|---|---------|--------|--------|
+| 1 | CSV / texto (TSV, UTF-16) | Catálogo histórico de sismos de la **RSN** (1975–2022) | `https://rsn.ucr.ac.cr/images/Sismologia/Catalogo_RSN_v2022.txt` |
+| 2 | API REST (GeoJSON) | Eventos recientes del **USGS**, filtrados al bounding box de Costa Rica | `https://earthquake.usgs.gov/fdsnws/event/1/query` |
+| 3 | Base de datos relacional | Inventario de **estaciones e instrumentos** (redes RSN-`TC` y OVSICORI-`OV`) | **IRIS FDSN** (`service.iris.edu/fdsnws/station`), cargado en PostgreSQL |
+
+Los eventos (CSV + API) **no traen código de estación**, por lo que cada evento se une con la **estación más cercana** (distancia haversine) de la fuente relacional. Ese es el punto donde las 3 fuentes se integran.
+
+---
+
+## 🏛️ Arquitectura
+
+```
+  FUENTES                 EXTRACT              TRANSFORM                 LOAD            DATA WAREHOUSE
+┌────────────┐      ┌────────────────┐                                              ┌──────────────────┐
+│ Catálogo   │─────▶│ reader.py      │─┐                                            │  esquema dw      │
+│ RSN (CSV)  │      │ (TSV UTF-16)   │ │                                            │ ──────────────── │
+├────────────┤      ├────────────────┤ │   ┌────────────────────┐   ┌───────────┐  │ fact_evento_…    │
+│ USGS (API) │─────▶│ api_client.py  │ ├──▶│ cleaner.py         │──▶│ loader.py │─▶│ dim_tiempo       │
+│ GeoJSON    │      │ (paginación)   │ │   │ normaliza · limpia │   │ surrogate │  │ dim_ubicacion    │
+├────────────┤      ├────────────────┤ │   │ deduplica          │   │ keys ·    │  │ dim_estacion     │
+│ Estaciones │─────▶│ db_reader.py   │─┘   │ enriquece          │   │ full /    │  │ dim_clasificacion│
+│ (BD rel.)  │      │ (PostgreSQL)   │     │ + estación cercana │   │ incremental│ │ etl_auditoria    │
+└────────────┘      └────────────────┘     └────────────────────┘   └───────────┘  └──────────────────┘
+```
+
+Capas (spec §6.1): **Extracción** → conectores por formato · **Transformación** → limpieza/validación/normalización/enriquecimiento/conformado · **Carga** → inserción en el modelo dimensional · **Presentación** → Superset (fase posterior).
+
+---
+
+## 📁 Estructura del proyecto
 
 ```
 Proyecto_ETL_RSN/
 ├── docker/
-│   └── docker-compose.yml      # Stack: PostgreSQL DW + pgAdmin
-├── .env.example                # Plantilla de variables de entorno
-├── .env                        # Variables reales (NO METER EN EL GIT)
-├── .gitignore
-│
+│   └── docker-compose.yml      # PostgreSQL DW + PostgreSQL relacional + pgAdmin + Superset
 ├── db/
-│   └── init.sql                # DDL: esquema estrella (se ejecuta al iniciar)
-│
+│   ├── init.sql                # DDL del DW: esquema estrella + auditoría (autoejecutado)
+│   └── init-2.sql              # DDL de la BD relacional: estaciones + instrumentos
 ├── data/
+│   ├── stations_sites.txt      # Estaciones (FDSN, nivel station) — versionado
+│   ├── stations_channel.txt    # Canales/instrumentos (FDSN, nivel channel) — versionado
 │   └── raw/
-│       └── Catalogo_RSN_v2022.txt  # Archivo fuente (TSV separado por tabs)
-│
+│       └── Catalogo_RSN_v2022.txt  # Catálogo CSV (NO versionado; se descarga)
 ├── etl/
-│   ├── pipeline.py             # Orquestador principal (CLI)
-│   ├── requirements.txt        # Dependencias Python
-│   │
+│   ├── pipeline.py             # Orquestador (CLI)
+│   ├── config.py               # Conexiones (DW/RDB) + logging desde .env
+│   ├── requirements.txt
 │   ├── extract/
-│   │   └── reader.py           # Capa E: lee el TSV con validación de path
-│   │
+│   │   ├── reader.py           # CSV (TSV UTF-16 + guard anti path-traversal)
+│   │   ├── api_client.py       # API USGS (paginación + reintentos)
+│   │   └── db_reader.py        # BD relacional (estaciones ⋈ instrumentos)
 │   ├── transform/
-│   │   └── cleaner.py          # Capa T: limpia y estructura los datos
-│   │
+│   │   └── cleaner.py          # Normaliza, limpia, deduplica y enriquece
 │   └── load/
-│       └── loader.py           # Capa L: inserta al DW con queries parametrizados
-│
-└── doc/
-    └── Especificacion_Proyecto_ETL_CI0141.pdf
+│       └── loader.py           # Get-or-create de dimensiones + carga de hechos
+├── .env.example
+└── README.md
 ```
 
 ---
 
-## 🚀 Levantar el Entorno Docker
+## 🚀 Puesta en marcha
 
-### 1. Configurar variables de entorno
-
+### 1. Variables de entorno
 ```bash
-# Copiar la plantilla
 cp .env.example .env
-
-# Si quieren pueden editar el archivo .env con las credenciales deseadas
+# Edite credenciales si lo desea. Los puertos del host (DW_DB_PORT / RDB_DB_PORT)
+# son configurables: cámbielos si 5432/5433 ya están ocupados en su máquina.
 ```
 
-### 2. Levantar los contenedores
-
+### 2. Levantar las bases de datos
 ```bash
-# Levantar en segundo plano
-docker compose up -d
-
-# Ver logs en tiempo real
-docker compose logs -f postgres_dw
-
-# Verificar estado de los servicios
-docker compose ps
+cd docker
+docker compose --env-file ../.env up -d postgres_dw postgres_RDB
+docker compose --env-file ../.env ps          # ambos deben quedar "healthy"
 ```
+El DW ejecuta `db/init.sql` (esquema estrella) y la BD relacional ejecuta `db/init-2.sql` (carga las estaciones) automáticamente en el primer arranque.
 
-### 3. Verificar la inicialización de la base de datos
-
+### 3. Dependencias de Python
 ```bash
-# Conectarse directamente al contenedor PostgreSQL
-docker exec -it rsn_postgres_dw psql -U etl_user -d rsn_dw
-
-# Dentro de psql, verificar las tablas del esquema estrella:
-# \dt dw.*
-# SELECT * FROM dw.dim_ubicacion;
+python3 -m venv .venv
+.venv/bin/pip install -r etl/requirements.txt
 ```
 
-### 4. Acceder a pgAdmin (interfaz gráfica)
-
-Abrir en el navegador: **[http://localhost:5050](http://localhost:5050)**
-
-- **Email:** valor de `PGADMIN_EMAIL` en el `.env`
-- **Password:** valor de `PGADMIN_PASSWORD` en el `.env`
-
-**Registrar el servidor PostgreSQL del Data Warehouse en pgAdmin:**
-1. Click derecho en _Servers_ → _Register_ → _Server_
-2. **General → Name:** `RSN Data Warehouse`
-3. **Connection → Host:** `rsn_postgres_dw` (nombre del servicio Docker)
-4. **Connection → Port:** `5432`
-5. **Connection → Database:** valor DW_DB_NAME  del `.env`
-6. **Connection → Username / Password:** valores del `.env`
-
-**Registrar el servidor PostgreSQL de datos del fdsn en pgAdmin:**
-1. Click derecho en _Servers_ → _Register_ → _Server_
-2. **General → Name:** `FDSN Data Base`
-3. **Connection → Host:** `fdsn_postgres_db` (nombre del servicio Docker)
-4. **Connection → Port:** `5432`
-5. **Connection → Database:** valor RDB_DB_NAME  del `.env`
-6. **Connection → Username / Password:** valores del `.env`
-
----
-
-## 🐍 Ejecutar el Pipeline ETL
-
-### Instalar dependencias Python
-
-```bash
-cd etl/
-pip install -r requirements.txt
-```
-
-### Preparar el archivo fuente
-
+### 4. Descargar el catálogo CSV
 ```bash
 mkdir -p data/raw
-cp /ruta/a/tu/Catalogo_RSN_v2022.txt data/raw/
+curl -L -o data/raw/Catalogo_RSN_v2022.txt \
+  https://rsn.ucr.ac.cr/images/Sismologia/Catalogo_RSN_v2022.txt
 ```
 
-### Ejecutar el pipeline completo
-
+### 5. Ejecutar el pipeline
 ```bash
-# Desde la raíz del proyecto
-python -m etl.pipeline --file data/raw/Catalogo_RSN_v2022.txt
-```
-
-### Modo dry-run (sin escribir a la BD)
-
-```bash
-python -m etl.pipeline --file data/raw/Catalogo_RSN_v2022.txt --dry-run
-```
-
-### Variables de entorno necesarias para la BD
-
-Asegúrar tener en el `.env`
-
-```bash
-export DW_DB_HOST=127.0.0.1
-export DW_DB_PORT=5432
-export DW_DB_NAME=rsn_dw
-export DW_DB_USER=etl_user
-export DW_DB_PASSWORD=TuPasswordSegura123!
+# Carga completa (las 3 fuentes)
+.venv/bin/python -m etl.pipeline --file data/raw/Catalogo_RSN_v2022.txt
 ```
 
 ---
 
-## 🛑 Detener y Limpiar
+## 🖥️ Uso del CLI
 
 ```bash
-# Detener contenedores (preserva los datos)
-docker compose stop
+python -m etl.pipeline --file <ruta> [opciones]
+```
 
-# Detener y eliminar contenedores (preserva los volúmenes)
-docker compose down
+| Opción | Descripción |
+|--------|-------------|
+| `--file` | Ruta al catálogo CSV/TSV (obligatorio, dentro de `data/`). |
+| `--source {all,csv,api}` | Fuentes de eventos a procesar (default: `all`). |
+| `--skip-api` | Omite la API USGS (equivale a `--source csv`). |
+| `--incremental` | Solo agrega hechos nuevos (no recarga todo). |
+| `--dry-run` | Ejecuta Extract + Transform **sin escribir** en la BD. |
 
-# Eliminar TODO incluyendo datos persistentes ⚠️
-docker compose down -v
+- **Carga completa** (sin `--incremental`): trunca y recarga la tabla de hechos → **idempotente** (correrla N veces da el mismo resultado).
+- **Carga incremental** (`--incremental`): inserta solo eventos que aún no existen (p. ej. para traer sismos recientes del USGS).
+
+---
+
+## 🗄️ Esquema estrella (DW)
+
+```
+        dim_tiempo            dim_clasificacion
+   (anio,mes,dia,hora)        (rango_magnitud)
+            │                        │
+            ▼                        ▼
+   ┌───────────────────────────────────────────┐
+   │           fact_evento_sismico             │
+   │  magnitud · profundidad_km · error_rms    │
+   └───────────────────────────────────────────┘
+            ▲                        ▲
+            │                        │
+       dim_ubicacion            dim_estacion
+     (latitud,longitud)     (codigo_estacion,canal)
+```
+
+- **Claves subrogadas** (UUID) en todas las dimensiones; **llaves naturales** con restricción `UNIQUE` que habilitan el *get-or-create*.
+- `dim_clasificacion` viene pre-cargada con los rangos de magnitud (Micro … Mayor).
+- `dw.etl_auditoria` registra, por corrida y fuente, cuántos registros se extrajeron, cargaron y descartaron.
+
+---
+
+## ✅ Cómo verificar que funciona
+
+```bash
+# Conteos del DW
+docker exec rsn_postgres_dw psql -U etl_user -d rsn_dw -c \
+"SELECT (SELECT COUNT(*) FROM dw.fact_evento_sismico) AS hechos,
+        (SELECT COUNT(*) FROM dw.dim_estacion) AS estaciones;"
+
+# Bitácora de auditoría
+docker exec rsn_postgres_dw psql -U etl_user -d rsn_dw -c \
+"SELECT fuente, rows_extraidas, rows_cargadas, rows_descartadas FROM dw.etl_auditoria ORDER BY ejecutado_en;"
+
+# Idempotencia: una segunda carga incremental debe insertar 0
+.venv/bin/python -m etl.pipeline --file data/raw/Catalogo_RSN_v2022.txt --incremental
 ```
 
 ---
 
-## 🗄️ Esquema Estrella
+## 🛑 Detener / limpiar
 
-```
-                    ┌─────────────────┐
-                    │   dim_tiempo    │
-                    │─────────────────│
-                    │ id_tiempo  (PK) │
-                    │ anio            │
-                    │ mes             │
-                    │ dia             │
-                    │ hora            │
-                    │ dia_semana      │
-                    └────────┬────────┘
-                             │
-  ┌──────────────────┐       │       ┌──────────────────────┐
-  │  dim_ubicacion   │       │       │    dim_estacion      │
-  │──────────────────│       │       │──────────────────────│
-  │ id_ubicacion(PK) │       │       │ id_estacion    (PK)  │
-  │ latitud          │       │       │ codigo_estacion      │
-  │ longitud         │       │       │ tipo_sensor          │
-  │ zona_geografica  │       │       │ estado_operativo     │
-  └────────┬─────────┘       │       └──────────┬───────────┘
-           │                 │                  │
-           └────────┐        │        ┌─────────┘
-                    ▼        ▼        ▼
-              ┌──────────────────────────────┐
-              │      fact_evento_sismico     │
-              │──────────────────────────────│
-              │ id_hecho       (PK)          │
-              │ id_ubicacion   (FK)          │
-              │ id_tiempo      (FK)          │
-              │ id_estacion    (FK)          │
-              │ magnitud                     │
-              │ profundidad_km               │
-              │ error_rms                    │
-              │ fecha_carga                  │
-              └──────────────────────────────┘
+```bash
+cd docker
+docker compose --env-file ../.env stop        # detener (conserva datos)
+docker compose --env-file ../.env down        # eliminar contenedores (conserva volúmenes)
+docker compose --env-file ../.env down -v     # eliminar TODO, incl. datos ⚠️
 ```
 
 ---
 
 ## 📋 Requisitos
 
-| Herramienta | Versión mínima |
-|-------------|----------------|
-| Docker      | 24.x           |
-| Docker Compose | 2.x (plugin) |
-| Python      | 3.11+          |
-| psycopg2-binary | 2.9.9     |
-| python-dotenv | 1.0.1        |
+| Herramienta | Versión |
+|-------------|---------|
+| Docker / Compose | 24.x / v2 |
+| Python | 3.11+ (probado en 3.13) |
+| psycopg2-binary | 2.9.10 |
+| requests | 2.32.3 |
+| python-dotenv | 1.0.1 |
