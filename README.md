@@ -89,9 +89,11 @@ El DW ejecuta `db/init.sql` (esquema estrella) y la BD relacional ejecuta `db/in
 
 ### 3. Dependencias de Python
 ```bash
+cd ..                       # volver a la raíz del proyecto (salir de docker/)
 python3 -m venv .venv
 .venv/bin/pip install -r etl/requirements.txt
 ```
+> Todos los comandos de Python (pasos 3 a 5) se ejecutan desde la **raíz del proyecto**, no desde `docker/`.
 
 ### 4. Descargar el catálogo CSV
 ```bash
