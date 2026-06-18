@@ -1,4 +1,4 @@
-# Proyecto ETL RSN — Data Warehouse Sísmico 🌋
+# Proyecto ETL RSN — Data Warehouse Sísmico
 
 Pipeline **ETL (Extract – Transform – Load)** que integra **tres fuentes de datos en formatos distintos** sobre sismicidad en Costa Rica y las carga en un **Data Warehouse PostgreSQL con esquema estrella**, listo para dashboards y reportes.
 
@@ -6,7 +6,7 @@ Pipeline **ETL (Extract – Transform – Load)** que integra **tres fuentes de 
 
 ---
 
-## 🔌 Fuentes de datos (3 formatos)
+## Fuentes de datos (3 formatos)
 
 | # | Formato | Fuente | Origen |
 |---|---------|--------|--------|
@@ -18,7 +18,7 @@ Los eventos (CSV + API) **no traen código de estación**, por lo que cada event
 
 ---
 
-## 🏛️ Arquitectura
+## Arquitectura
 
 ```
   FUENTES                 EXTRACT              TRANSFORM                 LOAD            DATA WAREHOUSE
@@ -38,7 +38,7 @@ Capas (spec §6.1): **Extracción** → conectores por formato · **Transformaci
 
 ---
 
-## 📁 Estructura del proyecto
+## Estructura del proyecto
 
 ```
 Proyecto_ETL_RSN/
@@ -70,7 +70,7 @@ Proyecto_ETL_RSN/
 
 ---
 
-## 🚀 Puesta en marcha
+## Puesta en marcha
 
 ### 1. Variables de entorno
 ```bash
@@ -108,7 +108,7 @@ curl -L -o data/raw/Catalogo_RSN_v2022.txt \
 
 ---
 
-## 🖥️ Uso del CLI
+## Uso del CLI
 
 ```bash
 python -m etl.pipeline --file <ruta> [opciones]
@@ -127,7 +127,7 @@ python -m etl.pipeline --file <ruta> [opciones]
 
 ---
 
-## 🗄️ Esquema estrella (DW)
+## Esquema estrella (DW)
 
 ```
         dim_tiempo            dim_clasificacion
@@ -150,7 +150,7 @@ python -m etl.pipeline --file <ruta> [opciones]
 
 ---
 
-## ✅ Cómo verificar que funciona
+## Cómo verificar que funciona
 
 ```bash
 # Conteos del DW
@@ -168,18 +168,18 @@ docker exec rsn_postgres_dw psql -U etl_user -d rsn_dw -c \
 
 ---
 
-## 🛑 Detener / limpiar
+## Detener / limpiar
 
 ```bash
 cd docker
 docker compose --env-file ../.env stop        # detener (conserva datos)
 docker compose --env-file ../.env down        # eliminar contenedores (conserva volúmenes)
-docker compose --env-file ../.env down -v     # eliminar TODO, incl. datos ⚠️
+docker compose --env-file ../.env down -v     # eliminar TODO, incl. datos (cuidado)
 ```
 
 ---
 
-## 📋 Requisitos
+## Requisitos
 
 | Herramienta | Versión |
 |-------------|---------|
