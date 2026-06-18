@@ -35,7 +35,10 @@ CREATE TABLE IF NOT EXISTS dw.dim_tiempo (
     -- Columna calculada para facilitar consultas de rango
     fecha_completa DATE GENERATED ALWAYS AS (
         MAKE_DATE(anio::INT, mes::INT, dia::INT)
-    ) STORED
+    ) STORED,
+    -- Llave natural: el grano de la dimensión es (año, mes, día, hora).
+    -- Necesaria para el get-or-create con ON CONFLICT en la carga.
+    CONSTRAINT uq_dim_tiempo UNIQUE (anio, mes, dia, hora)
 );
 COMMENT ON TABLE dw.dim_tiempo IS 'Dimensión temporal con granularidad de hora para el esquema estrella sísmico.';
 COMMENT ON COLUMN dw.dim_tiempo.dia_semana IS '1=Lunes … 7=Domingo (ISO 8601)';
@@ -53,7 +56,9 @@ CREATE TABLE IF NOT EXISTS dw.dim_ubicacion (
     longitud NUMERIC(9, 6) NOT NULL CHECK (
         longitud BETWEEN -180 AND 180
     ),
-    zona_geografica VARCHAR(150) NOT NULL DEFAULT 'Sin clasificar'
+    zona_geografica VARCHAR(150) NOT NULL DEFAULT 'Sin clasificar',
+    -- Llave natural: cada par de coordenadas es una ubicación única.
+    CONSTRAINT uq_dim_ubicacion UNIQUE (latitud, longitud)
 );
 COMMENT ON TABLE dw.dim_ubicacion IS 'Dimensión de ubicación geográfica del epicentro del evento sísmico.';
 CREATE INDEX IF NOT EXISTS idx_dim_ubicacion_zona ON dw.dim_ubicacion(zona_geografica);
@@ -79,9 +84,22 @@ CREATE TABLE IF NOT EXISTS dw.dim_estacion (
             'Mantenimiento',
             'Desconocido'
         )
-    )
+    ),
+    -- Llave natural: el grano es estación + canal (un instrumento por canal).
+    CONSTRAINT uq_dim_estacion UNIQUE (codigo_estacion, canal)
 );
 COMMENT ON TABLE dw.dim_estacion IS 'Dimensión de estaciones de la Red Sismológica Nacional (RSN).';
+-- -----------------------------------------------------------------------------
+-- dim_clasificacion: Categorización cualitativa del evento por magnitud
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS dw.dim_clasificacion (
+    id_clasificacion UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    rango_magnitud VARCHAR(20) NOT NULL,
+    descripcion VARCHAR(150) NOT NULL DEFAULT '',
+    -- Llave natural para el get-or-create.
+    CONSTRAINT uq_dim_clasificacion UNIQUE (rango_magnitud)
+);
+COMMENT ON TABLE dw.dim_clasificacion IS 'Dimensión de clasificación cualitativa del evento según su magnitud.';
 -- =============================================================================
 -- TABLA DE HECHOS
 -- =============================================================================
@@ -94,6 +112,8 @@ CREATE TABLE IF NOT EXISTS dw.fact_evento_sismico (
     id_ubicacion UUID NOT NULL REFERENCES dw.dim_ubicacion(id_ubicacion) ON DELETE RESTRICT,
     id_tiempo UUID NOT NULL REFERENCES dw.dim_tiempo(id_tiempo) ON DELETE RESTRICT,
     id_estacion UUID REFERENCES dw.dim_estacion(id_estacion) ON DELETE
+    SET NULL,
+        id_clasificacion UUID REFERENCES dw.dim_clasificacion(id_clasificacion) ON DELETE
     SET NULL,
         -- Métricas del evento
         magnitud NUMERIC(4, 2) NOT NULL CHECK (magnitud >= 0),
@@ -111,6 +131,22 @@ CREATE INDEX IF NOT EXISTS idx_fact_id_tiempo ON dw.fact_evento_sismico(id_tiemp
 CREATE INDEX IF NOT EXISTS idx_fact_id_ubicacion ON dw.fact_evento_sismico(id_ubicacion);
 CREATE INDEX IF NOT EXISTS idx_fact_magnitud ON dw.fact_evento_sismico(magnitud);
 CREATE INDEX IF NOT EXISTS idx_fact_fecha_carga ON dw.fact_evento_sismico(fecha_carga);
+CREATE INDEX IF NOT EXISTS idx_fact_id_clasificacion ON dw.fact_evento_sismico(id_clasificacion);
+-- =============================================================================
+-- AUDITORÍA ETL
+-- =============================================================================
+-- Registra una fila por cada corrida/origen del pipeline (spec §7.1 y §7.3).
+CREATE TABLE IF NOT EXISTS dw.etl_auditoria (
+    id_auditoria UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    fuente VARCHAR(50) NOT NULL,
+    rows_extraidas INTEGER NOT NULL DEFAULT 0,
+    rows_cargadas INTEGER NOT NULL DEFAULT 0,
+    rows_descartadas INTEGER NOT NULL DEFAULT 0,
+    estado VARCHAR(20) NOT NULL DEFAULT 'OK',
+    detalle TEXT,
+    ejecutado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+COMMENT ON TABLE dw.etl_auditoria IS 'Bitácora de auditoría: registros extraídos/cargados/descartados por corrida y fuente.';
 -- =============================================================================
 -- USUARIO DE APLICACIÓN (Principio de mínimo privilegio)
 -- =============================================================================
@@ -150,6 +186,14 @@ VALUES (9.9281, -84.0907, 'Valle Central'),
     (9.0000, -83.3500, 'Zona Sur'),
     (10.0000, -83.0000, 'Caribe'),
     (9.6500, -84.6500, 'Pacífico Central') ON CONFLICT DO NOTHING;
+-- Rangos de magnitud (escala estándar de clasificación sísmica)
+INSERT INTO dw.dim_clasificacion (rango_magnitud, descripcion)
+VALUES ('Micro', 'Magnitud menor a 2.0 (generalmente no se siente)'),
+    ('Menor', 'Magnitud 2.0 a 3.9 (se siente levemente)'),
+    ('Ligero', 'Magnitud 4.0 a 4.9 (sacudida notable, daños menores)'),
+    ('Moderado', 'Magnitud 5.0 a 5.9 (puede causar daños)'),
+    ('Fuerte', 'Magnitud 6.0 a 6.9 (daños en zonas pobladas)'),
+    ('Mayor', 'Magnitud 7.0 o superior (daños graves y extensos)') ON CONFLICT DO NOTHING;
 -- Mensaje de confirmación en los logs del contenedor
 DO $$ BEGIN RAISE NOTICE '✅ Esquema estrella RSN Data Warehouse inicializado correctamente.';
 END $$;

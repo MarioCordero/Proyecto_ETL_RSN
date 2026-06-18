@@ -19,8 +19,9 @@ services:
       POSTGRES_USER:     ${DW_DB_USER}
       POSTGRES_PASSWORD: ${DW_DB_PASSWORD}
     ports:
-      # Expuesto solo en localhost para minimizar superficie de ataque, se va a poner en producción?
-      - "127.0.0.1:5432:5432"
+      # Expuesto solo en localhost. El puerto del host se toma de DW_DB_PORT
+      # (default 5432) para poder evitar conflictos con otros Postgres locales.
+      - "127.0.0.1:${DW_DB_PORT:-5432}:5432"
     volumes:
       # Script DDL que se ejecuta automáticamente en el primer arranque
       - ../db/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
@@ -47,8 +48,9 @@ services:
       POSTGRES_USER:     ${RDB_DB_USER}
       POSTGRES_PASSWORD: ${RDB_DB_PASSWORD}
     ports:
-      # Expuesto solo en localhost y mapeado al puerto de la maquina 5433
-      - "127.0.0.1:5433:5432"
+      # Expuesto solo en localhost. El puerto del host se toma de RDB_DB_PORT
+      # (default 5433) para evitar conflictos con otros Postgres locales.
+      - "127.0.0.1:${RDB_DB_PORT:-5433}:5432"
     volumes:
       # importar .txt a docker
       - ../data:/import
@@ -60,7 +62,7 @@ services:
       - rsn_network
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${RDW_DB_USER} -d ${RDW_DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${RDB_DB_USER} -d ${RDB_DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
