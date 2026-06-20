@@ -4,9 +4,10 @@ Pipeline **ETL (Extract – Transform – Load)** que integra **tres fuentes de 
 
 > Curso CI-0141 Bases de Datos Avanzadas — ECCI, Universidad de Costa Rica.
 
----
 
 ## Fuentes de datos (3 formatos)
+
+<dd>
 
 | # | Formato | Fuente | Origen |
 |---|---------|--------|--------|
@@ -16,29 +17,33 @@ Pipeline **ETL (Extract – Transform – Load)** que integra **tres fuentes de 
 
 Los eventos (CSV + API) **no traen código de estación**, por lo que cada evento se une con la **estación más cercana** (distancia haversine) de la fuente relacional. Ese es el punto donde las 3 fuentes se integran.
 
----
+</dd>
 
 ## Arquitectura
 
+<dd>
+
 ```
-  FUENTES                 EXTRACT              TRANSFORM                 LOAD            DATA WAREHOUSE
-┌────────────┐      ┌────────────────┐                                              ┌──────────────────┐
-│ Catálogo   │─────▶│ reader.py      │─┐                                            │  esquema dw      │
-│ RSN (CSV)  │      │ (TSV UTF-16)   │ │                                            │ ──────────────── │
-├────────────┤      ├────────────────┤ │   ┌────────────────────┐   ┌───────────┐  │ fact_evento_…    │
-│ USGS (API) │─────▶│ api_client.py  │ ├──▶│ cleaner.py         │──▶│ loader.py │─▶│ dim_tiempo       │
-│ GeoJSON    │      │ (paginación)   │ │   │ normaliza · limpia │   │ surrogate │  │ dim_ubicacion    │
-├────────────┤      ├────────────────┤ │   │ deduplica          │   │ keys ·    │  │ dim_estacion     │
-│ Estaciones │─────▶│ db_reader.py   │─┘   │ enriquece          │   │ full /    │  │ dim_clasificacion│
-│ (BD rel.)  │      │ (PostgreSQL)   │     │ + estación cercana │   │ incremental│ │ etl_auditoria    │
-└────────────┘      └────────────────┘     └────────────────────┘   └───────────┘  └──────────────────┘
+  FUENTES                 EXTRACT              TRANSFORM                 LOAD              DATA WAREHOUSE
+┌────────────┐       ┌────────────────┐                                                 ┌──────────────────┐
+│ Catálogo   │─────▶│ reader.py      │─┐                                               │  esquema dw      │
+│ RSN (CSV)  │       │ (TSV UTF-16)   │ │                                               │ ──────────────── │
+├────────────┤       ├────────────────┤ │    ┌────────────────────┐    ┌────────────┐   │ fact_evento_…    │
+│ USGS (API) │─────▶│ api_client.py  │ ├──▶│ cleaner.py         │──▶│ loader.py  │─▶│ dim_tiempo       │
+│ GeoJSON    │       │ (paginación)   │ │    │ normaliza · limpia │    │ surrogate  │   │ dim_ubicacion    │
+├────────────┤       ├────────────────┤ │    │ deduplica          │    │ keys ·     │   │ dim_estacion     │
+│ Estaciones │─────▶│ db_reader.py   │─┘    │ enriquece          │    │ full /     │   │ dim_clasificacion│
+│ (BD rel.)  │       │ (PostgreSQL)   │      │ + estación cercana │    │ incremental│   │ etl_auditoria    │
+└────────────┘       └────────────────┘      └────────────────────┘    └────────────┘   └──────────────────┘
 ```
 
 Capas (spec §6.1): **Extracción** → conectores por formato · **Transformación** → limpieza/validación/normalización/enriquecimiento/conformado · **Carga** → inserción en el modelo dimensional · **Presentación** → Superset (fase posterior).
 
----
+</dd>
 
 ## Estructura del proyecto
+
+<dd>
 
 ```
 Proyecto_ETL_RSN/
@@ -68,49 +73,55 @@ Proyecto_ETL_RSN/
 └── README.md
 ```
 
----
+</dd>
 
 ## Puesta en marcha
 
-### 1. Variables de entorno
-```bash
-cp .env.example .env
-# Edite credenciales si lo desea. Los puertos del host (DW_DB_PORT / RDB_DB_PORT)
-# son configurables: cámbielos si 5432/5433 ya están ocupados en su máquina.
-```
+### En linux/Mac
 
-### 2. Levantar las bases de datos
-```bash
-cd docker
-docker compose --env-file ../.env up -d postgres_dw postgres_RDB
-docker compose --env-file ../.env ps          # ambos deben quedar "healthy"
-```
-El DW ejecuta `db/init.sql` (esquema estrella) y la BD relacional ejecuta `db/init-2.sql` (carga las estaciones) automáticamente en el primer arranque.
+<dd>
 
-### 3. Dependencias de Python
-```bash
-cd ..                       # volver a la raíz del proyecto (salir de docker/)
-python3 -m venv .venv
-.venv/bin/pip install -r etl/requirements.txt
-```
-> Todos los comandos de Python (pasos 3 a 5) se ejecutan desde la **raíz del proyecto**, no desde `docker/`.
+  #### 1. Variables de entorno
+  ```bash
+  cp .env.example .env
+  # Edite credenciales si lo desea. Los puertos del host (DW_DB_PORT / RDB_DB_PORT)
+  # son configurables: cámbielos si 5432/5433 ya están ocupados en su máquina.
+  ```
 
-### 4. Descargar el catálogo CSV
-```bash
-mkdir -p data/raw
-curl -L -o data/raw/Catalogo_RSN_v2022.txt \
-  https://rsn.ucr.ac.cr/images/Sismologia/Catalogo_RSN_v2022.txt
-```
+  #### 2. Levantar las bases de datos
+  ```bash
+  cd docker
+  docker compose --env-file ../.env up -d postgres_dw postgres_RDB # Puede necesitar permisos de super usuario (sudo)
+  docker compose --env-file ../.env ps          # ambos deben quedar "healthy"
+  ```
+  El DW ejecuta `db/init.sql` (esquema estrella) y la BD relacional ejecuta `db/init-2.sql` (carga las estaciones) automáticamente en el primer arranque.
 
-### 5. Ejecutar el pipeline
-```bash
-# Carga completa (las 3 fuentes)
-.venv/bin/python -m etl.pipeline --file data/raw/Catalogo_RSN_v2022.txt
-```
+  #### 3. Dependencias de Python
+  ```bash
+  cd ..                       # volver a la raíz del proyecto (salir de docker/)
+  python3 -m venv .venv
+  .venv/bin/pip install -r etl/requirements.txt
+  ```
+  > Todos los comandos de Python (pasos 3 a 5) se ejecutan desde la **raíz del proyecto**, no desde `docker/`.
 
----
+  #### 4. Descargar el catálogo CSV
+  ```bash
+  mkdir -p data/raw
+  curl -L -o data/raw/Catalogo_RSN_v2022.txt \
+    https://rsn.ucr.ac.cr/images/Sismologia/Catalogo_RSN_v2022.txt
+  ```
+
+  #### 5. Ejecutar el pipeline
+  ```bash
+  # Carga completa (las 3 fuentes)
+  .venv/bin/python -m etl.pipeline --file data/raw/Catalogo_RSN_v2022.txt
+  ```
+
+</dd>
 
 ## Uso del CLI
+
+<dd>
 
 ```bash
 python -m etl.pipeline --file <ruta> [opciones]
@@ -127,15 +138,18 @@ python -m etl.pipeline --file <ruta> [opciones]
 - **Carga completa** (sin `--incremental`): trunca y recarga la tabla de hechos → **idempotente** (correrla N veces da el mismo resultado).
 - **Carga incremental** (`--incremental`): inserta solo eventos que aún no existen (p. ej. para traer sismos recientes del USGS).
 
----
+</dd>
+
 
 ## Esquema estrella (DW)
 
+<dd>
+
 ```
-        dim_tiempo            dim_clasificacion
-   (anio,mes,dia,hora)        (rango_magnitud)
-            │                        │
-            ▼                        ▼
+        dim_tiempo
+   (anio,mes,dia,hora)
+            │
+            ▼
    ┌───────────────────────────────────────────┐
    │           fact_evento_sismico             │
    │  magnitud · profundidad_km · error_rms    │
@@ -150,9 +164,12 @@ python -m etl.pipeline --file <ruta> [opciones]
 - `dim_clasificacion` viene pre-cargada con los rangos de magnitud (Micro … Mayor).
 - `dw.etl_auditoria` registra, por corrida y fuente, cuántos registros se extrajeron, cargaron y descartaron.
 
----
+</dd>
+
 
 ## Cómo verificar que funciona
+
+<dd>
 
 ```bash
 # Conteos del DW
@@ -168,9 +185,11 @@ docker exec rsn_postgres_dw psql -U etl_user -d rsn_dw -c \
 .venv/bin/python -m etl.pipeline --file data/raw/Catalogo_RSN_v2022.txt --incremental
 ```
 
----
+</dd>
 
 ## Detener / limpiar
+
+<dd>
 
 ```bash
 cd docker
@@ -179,9 +198,11 @@ docker compose --env-file ../.env down        # eliminar contenedores (conserva 
 docker compose --env-file ../.env down -v     # eliminar TODO, incl. datos (cuidado)
 ```
 
----
+</dd>
 
 ## Requisitos
+
+<dd>
 
 | Herramienta | Versión |
 |-------------|---------|
@@ -190,3 +211,5 @@ docker compose --env-file ../.env down -v     # eliminar TODO, incl. datos (cuid
 | psycopg2-binary | 2.9.10 |
 | requests | 2.32.3 |
 | python-dotenv | 1.0.1 |
+
+</dd>
