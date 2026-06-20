@@ -54,7 +54,7 @@ def _to_int(value):
 # Enriquecimiento
 # --------------------------------------------------------------------------
 def clasificar_magnitud(mag: float) -> str:
-    """Mapea una magnitud a su rango cualitativo (debe existir en dim_clasificacion)."""
+    """Mapea una magnitud a su rango cualitativo (se guarda como atributo del hecho)."""
     if mag < 2.0:
         return "Micro"
     if mag < 4.0:

@@ -7,9 +7,10 @@ PostgreSQL respetando el esquema estrella, generando claves subrogadas.
 
 Estrategia:
   1. Cargar dim_estacion desde la fuente relacional.
-  2. Upsert masivo (execute_values + ON CONFLICT) de dim_tiempo, dim_ubicacion
-     y dim_clasificacion; luego construir mapas llave natural → UUID subrogado.
-  3. Insertar la tabla de hechos resolviendo las claves foráneas.
+  2. Upsert masivo (execute_values + ON CONFLICT) de dim_tiempo y dim_ubicacion;
+     luego construir mapas llave natural → UUID subrogado.
+  3. Insertar la tabla de hechos resolviendo las claves foráneas. La clasificación
+     de magnitud (rango_magnitud) se guarda como atributo del propio hecho.
   4. Modo incremental: omitir hechos ya presentes (firma natural).
   5. Validación post-carga + escritura de auditoría (dw.etl_auditoria).
 
@@ -58,12 +59,11 @@ def _load_dim_estacion(cur, stations: list[dict]) -> dict:
     return {cod: sid for cod, sid in cur.fetchall()}
 
 
-def _upsert_and_map(cur, eventos: list[dict]) -> tuple[dict, dict, dict]:
-    """Upsert masivo de tiempo/ubicacion/clasificacion y retorno de sus mapas."""
+def _upsert_and_map(cur, eventos: list[dict]) -> tuple[dict, dict]:
+    """Upsert masivo de tiempo/ubicacion y retorno de sus mapas."""
     # Conjuntos únicos a partir de los eventos.
     tiempos = {(e["anio"], e["mes"], e["dia"], e["hora"]): e["dia_semana"] for e in eventos}
     ubicaciones = {(e["latitud"], e["longitud"]): e["zona_geografica"] for e in eventos}
-    clasificaciones = {e["rango_magnitud"] for e in eventos}
 
     if tiempos:
         execute_values(
@@ -79,14 +79,6 @@ def _upsert_and_map(cur, eventos: list[dict]) -> tuple[dict, dict, dict]:
                VALUES %s ON CONFLICT (latitud, longitud) DO NOTHING""",
             [(lat, lon, zona) for (lat, lon), zona in ubicaciones.items()],
         )
-    if clasificaciones:
-        execute_values(
-            cur,
-            """INSERT INTO dw.dim_clasificacion (rango_magnitud)
-               VALUES %s ON CONFLICT (rango_magnitud) DO NOTHING""",
-            [(r,) for r in clasificaciones],
-        )
-
     # Construir los mapas llave natural → UUID.
     cur.execute("SELECT anio, mes, dia, hora, id_tiempo FROM dw.dim_tiempo")
     map_tiempo = {(a, m, d, h): tid for a, m, d, h, tid in cur.fetchall()}
@@ -94,10 +86,7 @@ def _upsert_and_map(cur, eventos: list[dict]) -> tuple[dict, dict, dict]:
     cur.execute("SELECT latitud, longitud, id_ubicacion FROM dw.dim_ubicacion")
     map_ubic = {(float(lat), float(lon)): uid for lat, lon, uid in cur.fetchall()}
 
-    cur.execute("SELECT rango_magnitud, id_clasificacion FROM dw.dim_clasificacion")
-    map_clas = {r: cid for r, cid in cur.fetchall()}
-
-    return map_tiempo, map_ubic, map_clas
+    return map_tiempo, map_ubic
 
 
 # --------------------------------------------------------------------------
@@ -142,7 +131,7 @@ def _validate(cur) -> dict:
     """Conteos post-carga; los FKs garantizan que no haya hechos huérfanos."""
     counts = {}
     for tabla in ("dim_tiempo", "dim_ubicacion", "dim_estacion",
-                  "dim_clasificacion", "fact_evento_sismico"):
+                  "fact_evento_sismico"):
         cur.execute(f"SELECT COUNT(*) FROM dw.{tabla}")
         counts[tabla] = cur.fetchone()[0]
     return counts
@@ -159,7 +148,7 @@ def load_to_dw(eventos: list[dict], stations: list[dict], stats: dict,
     with get_dw_connection() as conn:
         with conn.cursor() as cur:
             station_map = _load_dim_estacion(cur, stations)
-            map_tiempo, map_ubic, map_clas = _upsert_and_map(cur, eventos)
+            map_tiempo, map_ubic = _upsert_and_map(cur, eventos)
 
             # Carga inicial (full load): la tabla de hechos se reemplaza por
             # completo, de modo que volver a correrla es idempotente y no
@@ -178,8 +167,8 @@ def load_to_dw(eventos: list[dict], stations: list[dict], stats: dict,
                     map_ubic[(float(ev["latitud"]), float(ev["longitud"]))],
                     map_tiempo[(ev["anio"], ev["mes"], ev["dia"], ev["hora"])],
                     station_map.get(ev.get("codigo_estacion")),
-                    map_clas[ev["rango_magnitud"]],
                     ev["magnitud"], ev["profundidad_km"], ev["error_rms"],
+                    ev["rango_magnitud"],
                 ))
                 inserted_by_source[ev["source"]] += 1
 
@@ -187,8 +176,8 @@ def load_to_dw(eventos: list[dict], stations: list[dict], stats: dict,
                 execute_values(
                     cur,
                     """INSERT INTO dw.fact_evento_sismico
-                       (id_ubicacion, id_tiempo, id_estacion, id_clasificacion,
-                        magnitud, profundidad_km, error_rms)
+                       (id_ubicacion, id_tiempo, id_estacion,
+                        magnitud, profundidad_km, error_rms, rango_magnitud)
                        VALUES %s""",
                     filas_fact,
                     page_size=1000,

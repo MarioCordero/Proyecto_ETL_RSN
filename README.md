@@ -32,8 +32,9 @@ Los eventos (CSV + API) **no traen código de estación**, por lo que cada event
 │ USGS (API) │─────▶│ api_client.py  │ ├──▶│ cleaner.py         │──▶│ loader.py  │─▶│ dim_tiempo       │
 │ GeoJSON    │       │ (paginación)   │ │    │ normaliza · limpia │    │ surrogate  │   │ dim_ubicacion    │
 ├────────────┤       ├────────────────┤ │    │ deduplica          │    │ keys ·     │   │ dim_estacion     │
-│ Estaciones │─────▶│ db_reader.py   │─┘    │ enriquece          │    │ full /     │   │ dim_clasificacion│
-│ (BD rel.)  │       │ (PostgreSQL)   │      │ + estación cercana │    │ incremental│   │ etl_auditoria    │
+│ Estaciones │─────▶│ db_reader.py   │─┘    │ enriquece          │    │ full /     │   │ etl_auditoria    │
+│ (BD rel.)  │       │ (PostgreSQL)   │      │ + estación cercana │    │ incremental│   │ (rango_magnitud  │
+│            │       │                │      │                    │    │            │   │  en el hecho)    │
 └────────────┘       └────────────────┘      └────────────────────┘    └────────────┘   └──────────────────┘
 ```
 
@@ -150,18 +151,20 @@ python -m etl.pipeline --file <ruta> [opciones]
    (anio,mes,dia,hora)
             │
             ▼
-   ┌───────────────────────────────────────────┐
-   │           fact_evento_sismico             │
-   │  magnitud · profundidad_km · error_rms    │
-   └───────────────────────────────────────────┘
+   ┌─────────────────────────────────────────────────────┐
+   │                fact_evento_sismico                  │
+   │  magnitud · profundidad_km · error_rms              │
+   │  rango_magnitud (clasificación como atributo)       │
+   └─────────────────────────────────────────────────────┘
             ▲                        ▲
             │                        │
        dim_ubicacion            dim_estacion
      (latitud,longitud)     (codigo_estacion,canal)
 ```
 
+- **3 dimensiones**: `dim_tiempo`, `dim_ubicacion`, `dim_estacion`.
 - **Claves subrogadas** (UUID) en todas las dimensiones; **llaves naturales** con restricción `UNIQUE` que habilitan el *get-or-create*.
-- `dim_clasificacion` viene pre-cargada con los rangos de magnitud (Micro … Mayor).
+- La **clasificación de magnitud** (`rango_magnitud`: Micro … Mayor) vive como **atributo del hecho** (degenerate dimension), no como dimensión propia; se deriva en la transformación.
 - `dw.etl_auditoria` registra, por corrida y fuente, cuántos registros se extrajeron, cargaron y descartaron.
 
 </dd>
