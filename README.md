@@ -92,7 +92,7 @@ Proyecto_ETL_RSN/
   #### 2. Levantar las bases de datos
   ```bash
   cd docker
-  docker compose --env-file ../.env up -d postgres_dw postgres_RDB # Puede necesitar permisos de super usuario (sudo)
+  docker compose --env-file ../.env up -d # Puede necesitar permisos de super usuario (sudo)
   docker compose --env-file ../.env ps          # ambos deben quedar "healthy"
   ```
   El DW ejecuta `db/init.sql` (esquema estrella) y la BD relacional ejecuta `db/init-2.sql` (carga las estaciones) automáticamente en el primer arranque.

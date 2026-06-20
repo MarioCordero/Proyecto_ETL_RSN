@@ -87,7 +87,10 @@ services:
       PGADMIN_CONFIG_LOGIN_BANNER: '"Acceso restringido — Solo uso interno RSN"'
       PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: 40
     ports:
+      # (Según .env)
       # Acceder en http://localhost:5050
+      # Usuario: admin@rsn.local
+      # Contraseña:los4fantasticos123456
       - "127.0.0.1:5050:80"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
