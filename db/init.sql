@@ -89,17 +89,6 @@ CREATE TABLE IF NOT EXISTS dw.dim_estacion (
     CONSTRAINT uq_dim_estacion UNIQUE (codigo_estacion, canal)
 );
 COMMENT ON TABLE dw.dim_estacion IS 'Dimensión de estaciones de la Red Sismológica Nacional (RSN).';
--- -----------------------------------------------------------------------------
--- dim_clasificacion: Categorización cualitativa del evento por magnitud
--- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS dw.dim_clasificacion (
-    id_clasificacion UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    rango_magnitud VARCHAR(20) NOT NULL,
-    descripcion VARCHAR(150) NOT NULL DEFAULT '',
-    -- Llave natural para el get-or-create.
-    CONSTRAINT uq_dim_clasificacion UNIQUE (rango_magnitud)
-);
-COMMENT ON TABLE dw.dim_clasificacion IS 'Dimensión de clasificación cualitativa del evento según su magnitud.';
 -- =============================================================================
 -- TABLA DE HECHOS
 -- =============================================================================
@@ -113,17 +102,28 @@ CREATE TABLE IF NOT EXISTS dw.fact_evento_sismico (
     id_tiempo UUID NOT NULL REFERENCES dw.dim_tiempo(id_tiempo) ON DELETE RESTRICT,
     id_estacion UUID REFERENCES dw.dim_estacion(id_estacion) ON DELETE
     SET NULL,
-        id_clasificacion UUID REFERENCES dw.dim_clasificacion(id_clasificacion) ON DELETE
-    SET NULL,
         -- Métricas del evento
         magnitud NUMERIC(4, 2) NOT NULL CHECK (magnitud >= 0),
         profundidad_km NUMERIC(7, 3) CHECK (profundidad_km >= 0),
         error_rms NUMERIC(6, 4) CHECK (error_rms >= 0),
+        -- Clasificación cualitativa de la magnitud (atributo del hecho,
+        -- no dimensión propia): se deriva en la capa de transformación.
+        rango_magnitud VARCHAR(20) NOT NULL CHECK (
+            rango_magnitud IN (
+                'Micro',
+                'Menor',
+                'Ligero',
+                'Moderado',
+                'Fuerte',
+                'Mayor'
+            )
+        ),
         -- Auditoría
         fecha_carga TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 COMMENT ON TABLE dw.fact_evento_sismico IS 'Tabla de hechos: cada fila representa un evento sísmico registrado por la RSN.';
 COMMENT ON COLUMN dw.fact_evento_sismico.magnitud IS 'Magnitud en escala Richter o equivalente.';
+COMMENT ON COLUMN dw.fact_evento_sismico.rango_magnitud IS 'Clasificación cualitativa de la magnitud (Micro, Menor, Ligero, Moderado, Fuerte, Mayor).';
 COMMENT ON COLUMN dw.fact_evento_sismico.profundidad_km IS 'Profundidad del hipocentro en kilómetros.';
 COMMENT ON COLUMN dw.fact_evento_sismico.error_rms IS 'Error RMS del ajuste de la localización (segundos).';
 -- Índices para los patrones de consulta más comunes
@@ -131,7 +131,7 @@ CREATE INDEX IF NOT EXISTS idx_fact_id_tiempo ON dw.fact_evento_sismico(id_tiemp
 CREATE INDEX IF NOT EXISTS idx_fact_id_ubicacion ON dw.fact_evento_sismico(id_ubicacion);
 CREATE INDEX IF NOT EXISTS idx_fact_magnitud ON dw.fact_evento_sismico(magnitud);
 CREATE INDEX IF NOT EXISTS idx_fact_fecha_carga ON dw.fact_evento_sismico(fecha_carga);
-CREATE INDEX IF NOT EXISTS idx_fact_id_clasificacion ON dw.fact_evento_sismico(id_clasificacion);
+CREATE INDEX IF NOT EXISTS idx_fact_rango_magnitud ON dw.fact_evento_sismico(rango_magnitud);
 -- =============================================================================
 -- AUDITORÍA ETL
 -- =============================================================================
@@ -186,14 +186,6 @@ VALUES (9.9281, -84.0907, 'Valle Central'),
     (9.0000, -83.3500, 'Zona Sur'),
     (10.0000, -83.0000, 'Caribe'),
     (9.6500, -84.6500, 'Pacífico Central') ON CONFLICT DO NOTHING;
--- Rangos de magnitud (escala estándar de clasificación sísmica)
-INSERT INTO dw.dim_clasificacion (rango_magnitud, descripcion)
-VALUES ('Micro', 'Magnitud menor a 2.0 (generalmente no se siente)'),
-    ('Menor', 'Magnitud 2.0 a 3.9 (se siente levemente)'),
-    ('Ligero', 'Magnitud 4.0 a 4.9 (sacudida notable, daños menores)'),
-    ('Moderado', 'Magnitud 5.0 a 5.9 (puede causar daños)'),
-    ('Fuerte', 'Magnitud 6.0 a 6.9 (daños en zonas pobladas)'),
-    ('Mayor', 'Magnitud 7.0 o superior (daños graves y extensos)') ON CONFLICT DO NOTHING;
 -- Mensaje de confirmación en los logs del contenedor
 DO $$ BEGIN RAISE NOTICE '✅ Esquema estrella RSN Data Warehouse inicializado correctamente.';
 END $$;
