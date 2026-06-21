@@ -112,37 +112,63 @@ Con estas herramientas podrá administrar y auditar el entorno de datos. La info
 
 Una vez finalizada la revisión en pgAdmin, el siguiente paso es configurar Apache Superset para la creación de dashboards. Asegúrese de que los contenedores de Docker estén en ejecución.
 
+**Paso 0: Crear el archivo de configuración de Superset**
+
+En la misma carpeta donde se encuentra el `docker-compose.yml`, cree el archivo `superset_config.py`:
+
+```bash
+cat > superset_config.py << 'EOF'
+FEATURE_FLAGS = {
+    "ENABLE_JAVASCRIPT_CONTROLS": True,
+}
+EOF
+```
+
+Este archivo habilita los controles JavaScript avanzados en los gráficos (necesario para personalizar capas de `deck.gl`).
+
 **Paso 1: Inicializar y migrar la base de datos interna de Superset**
 
 ```bash
-docker exec -it rsn_superset superset db upgrade
+sudo docker exec -it rsn_superset superset db upgrade
 ```
 
 **Paso 2: Crear el usuario administrador**
+
 El sistema solicitará interactuar en la consola para ingresar un nombre de usuario, nombre, apellido, correo electrónico y contraseña.
 
 ```bash
-docker exec -it rsn_superset superset fab create-admin
+sudo docker exec -it rsn_superset superset fab create-admin
 ```
 
 **Paso 3: Crear los roles por defecto y asignar los permisos necesarios**
 
 ```bash
-docker exec -it rsn_superset superset init
+sudo docker exec -it rsn_superset superset init
 ```
 
 **Paso 4: Instalar el driver de PostgreSQL en el entorno virtual**
+
 Dado que la imagen oficial de Superset restringe la instalación de dependencias, es necesario instalar el driver `psycopg2` en el entorno virtual, asignar los permisos correctos y reiniciar el servicio:
 
 ```bash
-docker exec -it -u root rsn_superset pip install psycopg2-binary --target /app/.venv/lib/python3.10/site-packages
+sudo docker exec -it -u root rsn_superset pip install psycopg2-binary --target /app/.venv/lib/python3.10/site-packages
 
-docker exec -it -u root rsn_superset chown -R superset:superset /app/.venv/lib/python3.10/site-packages
+sudo docker exec -it -u root rsn_superset chown -R superset:superset /app/.venv/lib/python3.10/site-packages
 
-docker restart rsn_superset
+sudo docker restart rsn_superset
 ```
 
-**Paso 5: Conectar el Data Warehouse en la interfaz**
+> **Nota importante:** Este paso debe repetirse cada vez que se recree el contenedor desde cero, ya que el driver no persiste en la imagen base. Para evitar la pérdida de dashboards y configuraciones, el `docker-compose.yml` debe tener los volúmenes de persistencia configurados (ver sección de Docker Compose).
+
+**Paso 5: Verificar que la configuración fue cargada**
+
+```bash
+sudo docker exec rsn_superset python -c "from superset.config import FEATURE_FLAGS; print(FEATURE_FLAGS)"
+```
+
+La salida esperada es: `{'ENABLE_JAVASCRIPT_CONTROLS': True}`
+
+**Paso 6: Conectar el Data Warehouse en la interfaz**
 
 1. Ingrese a `http://localhost:8088/` e inicie sesión con las credenciales creadas en el Paso 2.
 2. Navegue a **Settings** > **Database Connections** > **+ Database** > **PostgreSQL**.
@@ -153,7 +179,7 @@ docker restart rsn_superset
 postgresql://etl_loader:CHANGE_IN_PRODUCTION@rsn_postgres_dw:5432/rsn_dw
 ```
 
-*(Nota: Si el nombre de la base de datos en su archivo .env es distinto, ajuste el final de la URI).*
+*(Nota: Si el nombre de la base de datos en su archivo `.env` es distinto, ajuste el final de la URI).*
 
 </dd>
 

@@ -105,10 +105,13 @@ services:
     container_name: rsn_superset
     restart: unless-stopped
     ports:
-      # Acceder en http://localhost:8088
       - "127.0.0.1:8088:8088"
     environment:
       SUPERSET_SECRET_KEY: "rsn-proyecto-secreto-cambiar"
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+    volumes:
+      - ./superset_config.py:/app/pythonpath/superset_config.py:ro
+      - superset_home:/app/superset_home
     networks:
       - rsn_network
     depends_on:
@@ -133,3 +136,4 @@ volumes:
     name: fdsn_postgres_rdb_data
   pgadmin_data:
     name: rsn_pgadmin_data
+  superset_home:
