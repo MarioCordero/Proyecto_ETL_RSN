@@ -112,6 +112,13 @@ Con estas herramientas podrá administrar y auditar el entorno de datos. La info
 
 Una vez finalizada la revisión en pgAdmin, el siguiente paso es configurar Apache Superset para la creación de dashboards. Asegúrese de que los contenedores de Docker estén en ejecución.
 
+Se recomienda trabajar en el directorio `docker/`
+
+```bash
+cd docker/
+```
+
+
 **Paso 0: Crear el archivo de configuración de Superset**
 
 En la misma carpeta donde se encuentra el `docker-compose.yml`, cree el archivo `superset_config.py`:
@@ -196,7 +203,7 @@ A continuación, se detalla el proceso para crear el primer dashboard conectando
 3. Haga clic en **+ Database** y seleccione **PostgreSQL**.
 4. Complete la información de la conexión:
     * **Display Name:** `DW RSN`
-    * **SQLAlchemy URI:** `postgresql://rsn_admin:super_password_seguro_123@postgres_dw:5432/rsn_datawarehouse`
+    * **SQLAlchemy URI:** `postgresql://etl_loader:CHANGE_IN_PRODUCTION@postgres_dw:5432/rsn_dw`
     *(Superset se comunica a través de la red interna de Docker, por lo que el host corresponde al nombre del servicio `postgres_dw` definido en el `docker-compose.yml`).*
 5. Presione **Test Connection** para verificar la comunicación y, si es exitosa, haga clic en **Connect**.
 
