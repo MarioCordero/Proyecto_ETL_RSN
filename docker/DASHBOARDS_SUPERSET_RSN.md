@@ -28,6 +28,8 @@ Todos los dashboards siguen el mismo flujo de tres pasos:
 
 ## Dashboard 1 — Mapa de Riesgo por Estación Caída
 
+<dd>
+
 **Objetivo:** Mostrar las estaciones inactivas geolocalizadas y qué tan peligrosa es el área donde quedaron fuera de servicio, para priorizar el despacho de cuadrillas de mantenimiento.
 
 ### Paso 1 — Crear el Dataset
@@ -61,7 +63,8 @@ GROUP BY e.latitud, e.longitud, e.codigo_estacion, e.canal;
 | Campo | Valor |
 |---|---|
 | Longitude & Latitude | `longitud` \| `latitud` |
-| Point Size | `max_mag_historica` |
+| Point Size | `AVG(max_mag_historica)` |
+| Multiplier | `500` |
 | Row limit | `10000` |
 
 4. Configurar el panel **Map**:
@@ -69,19 +72,27 @@ GROUP BY e.latitud, e.longitud, e.codigo_estacion, e.canal;
 | Campo | Valor |
 |---|---|
 | Map Style | Topography (OSM) |
-| Color Scheme | Reds |
-| Extruded | ✅ Activado |
+| Color Scheme | Red to yellow |
 
-5. Hacer clic en **Update Chart**
-6. Guardar con el nombre `Mapa de Riesgo — Estaciones Caídas`
+5. Configurar el panel **Point Color**:
+
+| Campo | Valor |
+|---|---|
+| Categorical Color | max_mag_histórica |
+| Color Scheme | Red to yellow |
+
+6. Hacer clic en **Update Chart**
+7. Guardar con el nombre `1. Dashboard: Mapa de Riesgo — Estaciones Caídas`
 
 ### Decisión operativa
 
 > Un punto rojo grande en la costa indica una estación inactiva en una zona que históricamente registra sismos de alta magnitud. **Enviar cuadrilla de prioridad alta.**
 
----
+</dd>
 
 ## Dashboard 2 — Degradación de Calibración por Canal
+
+<dd>
 
 **Objetivo:** Detectar qué canal de sensor (BHE, BHN, BHZ, etc.) presenta errores RMS elevados de forma regional, para llevar solo el módulo de reemplazo correcto al campo.
 
@@ -116,6 +127,7 @@ HAVING COUNT(f.id_hecho) >= 10;
 | Campo | Valor |
 |---|---|
 | Longitude & Latitude | `longitud` \| `latitud` |
+| Weight | `AVG(error_promedio)` |
 | Row limit | `10000` |
 
 4. Configurar el panel **Map**:
@@ -123,8 +135,6 @@ HAVING COUNT(f.id_hecho) >= 10;
 | Campo | Valor |
 |---|---|
 | Map Style | Topography (OSM) |
-| Grid Size | `20000` (aprox. 20 km — ideal para ver manchas de error regional) |
-| Dynamic Aggregation Function | `MAX` |
 | Color Scheme | Reds |
 
 5. Hacer clic en **Update Chart**
@@ -138,9 +148,11 @@ Al agregar este chart al dashboard, incluir un componente **Filter Box** vincula
 
 > Seleccionar el canal `BHE` en el filtro. Si aparece una mancha roja intensa en una región, el sensor de banda ancha horizontal Este está degenerado en esa área. **Llevar solo el módulo de reemplazo BHE, no toda la estación.**
 
----
+</dd>
 
 ## Dashboard 3 — Enjambres Sísmicos Históricos (Alerta Temprana Volcánica)
+
+<dd>
 
 **Objetivo:** Identificar días donde se concentraron muchos sismos pequeños en un mismo punto geográfico — la firma característica de actividad volcánica o falla activándose.
 
@@ -163,7 +175,6 @@ WHERE f.rango_magnitud IN ('Micro', 'Menor')
 GROUP BY u.latitud, u.longitud, t.fecha_completa
 HAVING COUNT(f.id_hecho) >= 3
 ORDER BY cantidad_sismos_dia DESC
-LIMIT 15000;
 ```
 
 > El `HAVING COUNT >= 3` filtra los días con 3 o más sismos pequeños en el mismo punto. El `LIMIT 15000` evita que el navegador colapse con datos masivos.
@@ -221,9 +232,11 @@ function(data, viewport) {
 
 > Al rotar el mapa 3D, una "aguja" o torre alta y estrecha indica un enjambre concentrado. Revisar la fecha en el tooltip. **Si coincide con actividad volcánica conocida, cruzar con datos de plantas geotérmicas o volcanes cercanos para evaluación de riesgo.**
 
----
+</dd>
 
 ## Dashboard 4 — Topografía de Esfuerzo Tectónico (Subducción 3D)
+
+<dd>
 
 **Objetivo:** Visualizar la rampa de subducción de la Placa del Coco hundiéndose bajo Costa Rica. Los sismos superficiales (costa Pacífica) aparecen altos en el mapa 3D; los profundos (centro y Caribe) aparecen en el fondo — dibujando la placa hundiéndose.
 
@@ -314,9 +327,11 @@ function(object) {
 
 > Al inclinar el mapa 3D se ve la "cortina" de puntos hundiéndose de oeste a este. Las ciudades directamente sobre los hexágonos más altos (sismos más superficiales) son las de mayor riesgo sísmico inmediato. **Priorizar refuerzo estructural en esas zonas.**
 
----
+</dd>
 
 ## Dashboard 5 — Estaciones Veteranas bajo Fatiga de Material
+
+<dd>
 
 **Objetivo:** Identificar estaciones activas que han absorbido la mayor cantidad de energía sísmica acumulada a lo largo de su vida útil, para programar mantenimiento preventivo antes de que fallen.
 
@@ -372,9 +387,11 @@ ORDER BY energia_acumulada_total DESC;
 
 > Una estación con `energia_acumulada_total` muy alto y `max_golpe_recibido >= 6.0`, aunque figure como `Activo`, es candidata a falla prematura. **Programar mantenimiento preventivo de cimentación y data-logger para el próximo trimestre.**
 
----
+</dd>
 
 ## Dashboard 6 — Puntos Ciegos de la Red (¿Dónde construir nuevas estaciones?)
+
+<dd>
 
 **Objetivo:** Visualizar las zonas con mayor error de localización RMS, que corresponden a áreas donde la red sísmica tiene cobertura deficiente. Son los candidatos naturales para instalar nuevas estaciones.
 
@@ -441,9 +458,11 @@ Una vez creados los 6 charts, unirlos en un solo dashboard:
 5. Agregar un **Filter Box** global vinculado a `fecha_completa` para filtrar por rango de fechas en los charts que lo soporten
 6. Hacer clic en **Save**
 
----
+</dd>
 
 ## Referencia rápida de datasets
+
+<dd>
 
 | Dataset | Tabla principal | Filtro clave |
 |---|---|---|
@@ -453,3 +472,5 @@ Una vez creados los 6 charts, unirlos en un solo dashboard:
 | `ds_SubduccionTectonica` | `fact_evento_sismico` + `dim_ubicacion` | `rango_magnitud IN ('Moderado','Fuerte','Mayor')` |
 | `ds_FatigaEstaciones` | `dim_estacion` + `fact_evento_sismico` | `magnitud >= 4.0` |
 | `ds_PuntosCiegos` | `fact_evento_sismico` + `dim_ubicacion` | `error_rms > 0` |
+
+</dd>
