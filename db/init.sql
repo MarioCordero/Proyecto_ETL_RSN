@@ -89,6 +89,30 @@ CREATE TABLE IF NOT EXISTS dw.dim_estacion (
     CONSTRAINT uq_dim_estacion UNIQUE (codigo_estacion, canal)
 );
 COMMENT ON TABLE dw.dim_estacion IS 'Dimensión de estaciones de la Red Sismológica Nacional (RSN).';
+-- -----------------------------------------------------------------------------
+-- dim_volcan: Dimensión de volcanes activos de Costa Rica (datos maestros)
+-- Fuente: Smithsonian Global Volcanism Program (volcano.si.edu); monitoreo
+-- por OVSICORI-UNA y RSN-UCR. Se carga desde data/volcanes_cr.csv.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS dw.dim_volcan (
+    id_volcan UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    codigo_volcan VARCHAR(10) NOT NULL,
+    nombre VARCHAR(100) NOT NULL,
+    latitud NUMERIC(9, 6) NOT NULL CHECK (
+        latitud BETWEEN -90 AND 90
+    ),
+    longitud NUMERIC(9, 6) NOT NULL CHECK (
+        longitud BETWEEN -180 AND 180
+    ),
+    radio_influencia_km NUMERIC(5, 2) NOT NULL DEFAULT 10 CHECK (
+        radio_influencia_km > 0
+    ),
+    tipo_manifestacion VARCHAR(100) NOT NULL DEFAULT 'Desconocido',
+    -- Llave natural de negocio (código corto del volcán).
+    CONSTRAINT uq_dim_volcan UNIQUE (codigo_volcan)
+);
+COMMENT ON TABLE dw.dim_volcan IS 'Dimensión de volcanes activos de Costa Rica (GVP / OVSICORI / RSN).';
+COMMENT ON COLUMN dw.dim_volcan.radio_influencia_km IS 'Radio (km) dentro del cual un sismo se considera asociado al volcán.';
 -- =============================================================================
 -- TABLA DE HECHOS
 -- =============================================================================
@@ -101,6 +125,9 @@ CREATE TABLE IF NOT EXISTS dw.fact_evento_sismico (
     id_ubicacion UUID NOT NULL REFERENCES dw.dim_ubicacion(id_ubicacion) ON DELETE RESTRICT,
     id_tiempo UUID NOT NULL REFERENCES dw.dim_tiempo(id_tiempo) ON DELETE RESTRICT,
     id_estacion UUID REFERENCES dw.dim_estacion(id_estacion) ON DELETE
+    SET NULL,
+        -- Volcán cercano (NULL si el sismo no cae dentro del radio de ningún volcán).
+        id_volcan_cercano UUID REFERENCES dw.dim_volcan(id_volcan) ON DELETE
     SET NULL,
         -- Métricas del evento
         magnitud NUMERIC(4, 2) NOT NULL CHECK (magnitud >= 0),
@@ -132,6 +159,7 @@ CREATE INDEX IF NOT EXISTS idx_fact_id_ubicacion ON dw.fact_evento_sismico(id_ub
 CREATE INDEX IF NOT EXISTS idx_fact_magnitud ON dw.fact_evento_sismico(magnitud);
 CREATE INDEX IF NOT EXISTS idx_fact_fecha_carga ON dw.fact_evento_sismico(fecha_carga);
 CREATE INDEX IF NOT EXISTS idx_fact_rango_magnitud ON dw.fact_evento_sismico(rango_magnitud);
+CREATE INDEX IF NOT EXISTS idx_fact_id_volcan ON dw.fact_evento_sismico(id_volcan_cercano);
 -- =============================================================================
 -- AUDITORÍA ETL
 -- =============================================================================

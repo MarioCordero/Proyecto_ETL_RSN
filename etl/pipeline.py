@@ -25,7 +25,7 @@ import argparse
 import sys
 
 from etl.config import get_logger
-from etl.extract import api_client, db_reader, reader
+from etl.extract import api_client, db_reader, reader, volcano_reader
 from etl.load.loader import load_to_dw
 from etl.transform.cleaner import transform
 
@@ -62,9 +62,15 @@ def run(file_path, source="all", skip_api=False, incremental=False, dry_run=Fals
         logger.warning("No se pudo leer la BD relacional (%s). Se continúa sin estaciones.", exc)
         stations = []
 
+    try:
+        volcanes = volcano_reader.read_volcanoes()
+    except Exception as exc:  # la fuente de volcanes es opcional
+        logger.warning("No se pudo leer la fuente de volcanes (%s). Se continúa sin volcanes.", exc)
+        volcanes = []
+
     # ---- TRANSFORM --------------------------------------------------------
     logger.info("=== TRANSFORM ===")
-    resultado = transform(csv_rows, api_features, stations)
+    resultado = transform(csv_rows, api_features, stations, volcanes)
     eventos, stats = resultado["eventos"], resultado["stats"]
 
     # ---- LOAD -------------------------------------------------------------
@@ -74,7 +80,7 @@ def run(file_path, source="all", skip_api=False, incremental=False, dry_run=Fals
         return {"dry_run": True, "stats": stats}
 
     logger.info("=== LOAD ===")
-    res = load_to_dw(eventos, stations, stats, incremental=incremental)
+    res = load_to_dw(eventos, stations, stats, incremental=incremental, volcanes=volcanes)
 
     logger.info("=== RESUMEN FINAL ===")
     logger.info("Hechos insertados: %d", res["insertados"])

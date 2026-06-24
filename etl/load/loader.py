@@ -59,6 +59,28 @@ def _load_dim_estacion(cur, stations: list[dict]) -> dict:
     return {cod: sid for cod, sid in cur.fetchall()}
 
 
+def _load_dim_volcan(cur, volcanes: list[dict]) -> dict:
+    """Inserta los volcanes (datos maestros) y retorna el mapa codigo_volcan → id_volcan."""
+    if volcanes:
+        execute_values(
+            cur,
+            """
+            INSERT INTO dw.dim_volcan
+                (codigo_volcan, nombre, latitud, longitud,
+                 radio_influencia_km, tipo_manifestacion)
+            VALUES %s
+            ON CONFLICT (codigo_volcan) DO NOTHING
+            """,
+            [
+                (v["codigo_volcan"], v["nombre"], v["latitud"], v["longitud"],
+                 v["radio_influencia_km"], v["tipo_manifestacion"])
+                for v in volcanes
+            ],
+        )
+    cur.execute("SELECT codigo_volcan, id_volcan FROM dw.dim_volcan")
+    return {cod: vid for cod, vid in cur.fetchall()}
+
+
 def _upsert_and_map(cur, eventos: list[dict]) -> tuple[dict, dict]:
     """Upsert masivo de tiempo/ubicacion y retorno de sus mapas."""
     # Conjuntos únicos a partir de los eventos.
@@ -130,7 +152,7 @@ def _write_audit(cur, fuente, extraidas, cargadas, descartadas, estado="OK", det
 def _validate(cur) -> dict:
     """Conteos post-carga; los FKs garantizan que no haya hechos huérfanos."""
     counts = {}
-    for tabla in ("dim_tiempo", "dim_ubicacion", "dim_estacion",
+    for tabla in ("dim_tiempo", "dim_ubicacion", "dim_estacion", "dim_volcan",
                   "fact_evento_sismico"):
         cur.execute(f"SELECT COUNT(*) FROM dw.{tabla}")
         counts[tabla] = cur.fetchone()[0]
@@ -141,13 +163,14 @@ def _validate(cur) -> dict:
 # Entrada principal
 # --------------------------------------------------------------------------
 def load_to_dw(eventos: list[dict], stations: list[dict], stats: dict,
-               incremental: bool = False) -> dict:
+               incremental: bool = False, volcanes: list[dict] | None = None) -> dict:
     """Carga los eventos al DW. Retorna un resumen con conteos y validación."""
     inserted_by_source = {"CSV": 0, "API": 0}
 
     with get_dw_connection() as conn:
         with conn.cursor() as cur:
             station_map = _load_dim_estacion(cur, stations)
+            volcan_map = _load_dim_volcan(cur, volcanes or [])
             map_tiempo, map_ubic = _upsert_and_map(cur, eventos)
 
             # Carga inicial (full load): la tabla de hechos se reemplaza por
@@ -167,6 +190,7 @@ def load_to_dw(eventos: list[dict], stations: list[dict], stats: dict,
                     map_ubic[(float(ev["latitud"]), float(ev["longitud"]))],
                     map_tiempo[(ev["anio"], ev["mes"], ev["dia"], ev["hora"])],
                     station_map.get(ev.get("codigo_estacion")),
+                    volcan_map.get(ev.get("codigo_volcan")),
                     ev["magnitud"], ev["profundidad_km"], ev["error_rms"],
                     ev["rango_magnitud"],
                 ))
@@ -176,7 +200,7 @@ def load_to_dw(eventos: list[dict], stations: list[dict], stats: dict,
                 execute_values(
                     cur,
                     """INSERT INTO dw.fact_evento_sismico
-                       (id_ubicacion, id_tiempo, id_estacion,
+                       (id_ubicacion, id_tiempo, id_estacion, id_volcan_cercano,
                         magnitud, profundidad_km, error_rms, rango_magnitud)
                        VALUES %s""",
                     filas_fact,

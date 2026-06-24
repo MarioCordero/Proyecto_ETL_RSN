@@ -118,6 +118,33 @@ def _nearest_station(lat: float, lon: float, index: list[tuple]) -> str | None:
     return mejor_cod
 
 
+def _build_volcano_index(volcanes: list[dict]) -> list[tuple]:
+    """Lista (codigo_volcan, lat, lon, radio_km) para el cruce sismo↔volcán."""
+    index = []
+    for v in volcanes:
+        cod = (v.get("codigo_volcan") or "").strip()
+        lat = _to_float(v.get("latitud"))
+        lon = _to_float(v.get("longitud"))
+        radio = _to_float(v.get("radio_influencia_km"))
+        if cod and lat is not None and lon is not None and radio:
+            index.append((cod, lat, lon, radio))
+    return index
+
+
+def _nearest_volcano_within_radius(lat: float, lon: float, index: list[tuple]) -> str | None:
+    """
+    Retorna el codigo_volcan del volcán más cercano cuya distancia al epicentro sea
+    menor o igual a su radio_influencia_km. Si ninguno cumple, retorna None
+    (el sismo no se considera asociado a actividad volcánica).
+    """
+    mejor_cod, mejor_dist = None, float("inf")
+    for cod, vlat, vlon, radio in index:
+        d = haversine(lat, lon, vlat, vlon)
+        if d <= radio and d < mejor_dist:
+            mejor_cod, mejor_dist = cod, d
+    return mejor_cod
+
+
 # --------------------------------------------------------------------------
 # Normalización por fuente
 # --------------------------------------------------------------------------
@@ -200,15 +227,17 @@ def _dedup_key(ev: dict) -> tuple:
     )
 
 
-def transform(csv_rows: list[dict], api_features: list[dict], stations: list[dict]) -> dict:
+def transform(csv_rows: list[dict], api_features: list[dict], stations: list[dict],
+              volcanes: list[dict] | None = None) -> dict:
     """
     Limpia, deduplica y enriquece los eventos. Retorna:
         {
-          "eventos": [ <evento común con estación asignada> , ... ],
+          "eventos": [ <evento común con estación y volcán asignados> , ... ],
           "stats": { ... métricas por fuente para auditoría ... },
         }
     """
     station_index = _build_station_index(stations)
+    volcano_index = _build_volcano_index(volcanes or [])
 
     stats = {
         "csv_extraidas": len(csv_rows), "csv_descartadas": 0,
@@ -245,10 +274,21 @@ def transform(csv_rows: list[dict], api_features: list[dict], stations: list[dic
         for ev in eventos:
             ev["codigo_estacion"] = None
 
+    # Enriquecimiento: volcán cercano (cruce sismo↔volcán dentro del radio de influencia).
+    eventos_volcanicos = 0
+    for ev in eventos:
+        cod = _nearest_volcano_within_radius(ev["latitud"], ev["longitud"], volcano_index) \
+            if volcano_index else None
+        ev["codigo_volcan"] = cod
+        if cod:
+            eventos_volcanicos += 1
+    stats["eventos_volcanicos"] = eventos_volcanicos
+
     stats["total_eventos"] = len(eventos)
     logger.info(
-        "Transform: %d eventos válidos (CSV descartó %d, API descartó %d, %d duplicados)",
+        "Transform: %d eventos válidos (CSV descartó %d, API descartó %d, %d duplicados, "
+        "%d asociados a volcán)",
         stats["total_eventos"], stats["csv_descartadas"],
-        stats["api_descartadas"], stats["duplicados"],
+        stats["api_descartadas"], stats["duplicados"], eventos_volcanicos,
     )
     return {"eventos": eventos, "stats": stats}
