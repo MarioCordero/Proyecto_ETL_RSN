@@ -112,6 +112,7 @@ services:
     volumes:
       - ./superset_config.py:/app/pythonpath/superset_config.py:ro
       - superset_home:/app/superset_home
+      - superset_venv:/app/.venv 
     networks:
       - rsn_network
     depends_on:
@@ -137,3 +138,4 @@ volumes:
   pgadmin_data:
     name: rsn_pgadmin_data
   superset_home:
+  superset_venv:
