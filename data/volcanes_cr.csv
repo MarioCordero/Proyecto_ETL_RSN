@@ -1,0 +1,11 @@
+codigo_volcan,nombre,latitud,longitud,radio_influencia_km,tipo_manifestacion
+POAS,Volcan Poas,10.200000,-84.233000,10,Emision de gases (SO2) / Erupcion freatica
+IRAZU,Volcan Irazu,9.979000,-83.852000,10,Fumarolas / Deslizamientos
+TURRI,Volcan Turrialba,10.025000,-83.767000,10,Emision de gases (SO2) / Erupcion freatica
+ARENAL,Volcan Arenal,10.463000,-84.703000,10,Erupcion estromboliana (en reposo desde 2010)
+RINCON,Volcan Rincon de la Vieja,10.830000,-85.324000,10,Erupcion freatica / Lahares
+MIRAV,Volcan Miravalles,10.748000,-85.153000,10,Fumarolas / Actividad geotermica
+TENOR,Volcan Tenorio,10.673000,-85.015000,10,Fumarolas / Aguas termales
+BARVA,Volcan Barva,10.135000,-84.100000,10,Fumarolas (latente)
+PLATA,Volcan Platanar,10.300000,-84.366000,10,Fumarolas (latente)
+OROSI,Volcan Orosi,10.980000,-85.473000,10,Fumarolas (latente)
