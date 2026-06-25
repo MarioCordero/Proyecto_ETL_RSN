@@ -2,9 +2,9 @@
 
 Esta guía documenta paso a paso cómo recrear los 6 dashboards analíticos del proyecto ETL RSN en Apache Superset. Cada sección incluye el SQL del dataset, la configuración exacta del chart y la decisión operativa que habilita.
 
----
-
 ## Prerequisitos
+
+<dd>
 
 Antes de empezar, asegúrese de que:
 
@@ -14,9 +14,12 @@ Antes de empezar, asegúrese de que:
 
 Si alguno de estos puntos no está listo, consulte la sección **5. Configuración Inicial de Superset** de la guía principal.
 
----
+</dd>
+
 
 ## Flujo general para cada dashboard
+
+<dd>
 
 Todos los dashboards siguen el mismo flujo de tres pasos:
 
@@ -24,7 +27,9 @@ Todos los dashboards siguen el mismo flujo de tres pasos:
 2. **Crear el Chart** — seleccionar el tipo de gráfico y configurar las columnas
 3. **Agregar al Dashboard** — crear o abrir el dashboard y arrastrar el chart
 
----
+> Al final de esta guía se explicará como hacer charts en Superset usando la librería `deck.gl`
+
+</dd>
 
 ## Dashboard 1 — Mapa de Riesgo por Estación Caída
 
@@ -43,50 +48,27 @@ SELECT
     e.latitud,
     e.longitud,
     e.codigo_estacion,
-    e.canal,
-    COUNT(f.id_hecho)  AS historico_sismos_cercanos,
-    MAX(f.magnitud)    AS max_mag_historica
+    COUNT(f.id_hecho) AS historico_sismos_cercanos,
+    MAX(f.magnitud) AS max_mag_historica
 FROM dw.dim_estacion e
-LEFT JOIN dw.fact_evento_sismico f ON e.id_estacion = f.id_estacion
+JOIN dw.dim_ubicacion u 
+  ON ABS(e.latitud - u.latitud) <= 0.2 
+ AND ABS(e.longitud - u.longitud) <= 0.2
+JOIN dw.fact_evento_sismico f 
+  ON u.id_ubicacion = f.id_ubicacion
 WHERE e.estado_operativo = 'Inactivo'
-GROUP BY e.latitud, e.longitud, e.codigo_estacion, e.canal;
+GROUP BY e.latitud, e.longitud, e.codigo_estacion;
 ```
 
-4. Hacer clic en **Save Dataset** → nombre: `ds_EstacionesCaidas`
+4. Hacer clic en **Save Dataset** → nombre: `1. ds_EstacionesCaidas`
 
 ### Paso 2 — Crear el Chart
 
-1. Desde el dataset guardado, hacer clic en **Explore**
-2. En **Chart Type**, seleccionar **deck.gl Scatterplot**
-3. Configurar el panel **Query**:
-
-| Campo | Valor |
-|---|---|
-| Longitude & Latitude | `longitud` \| `latitud` |
-| Point Size | `AVG(max_mag_historica)` |
-| Multiplier | `500` |
-| Row limit | `10000` |
-
-4. Configurar el panel **Map**:
-
-| Campo | Valor |
-|---|---|
-| Map Style | Topography (OSM) |
-| Color Scheme | Red to yellow |
-
-5. Configurar el panel **Point Color**:
-
-| Campo | Valor |
-|---|---|
-| Categorical Color | max_mag_histórica |
-| Color Scheme | Red to yellow |
-
-6. Hacer clic en **Update Chart**
-7. Guardar con el nombre `1. Dashboard: Mapa de Riesgo — Estaciones Caídas`
+Al final se explica
 
 ### Decisión operativa
 
-> Un punto rojo grande en la costa indica una estación inactiva en una zona que históricamente registra sismos de alta magnitud. **Enviar cuadrilla de prioridad alta.**
+> Un punto rojo grande en la costa indica una estación inactiva en una zona que históricamente registra sismos de alta magnitud. **Hay que considerar activar esa esatación.**
 
 </dd>
 
@@ -108,7 +90,12 @@ SELECT
     e.codigo_estacion,
     e.canal,
     ROUND(AVG(f.error_rms)::numeric, 5) AS error_promedio,
-    COUNT(f.id_hecho)                   AS total_registros
+    COUNT(f.id_hecho) AS total_registros,
+    CASE 
+        WHEN AVG(f.error_rms) < 1.5 THEN '1. Óptimo (Verde)'
+        WHEN AVG(f.error_rms) >= 1.5 AND AVG(f.error_rms) < 3.0 THEN '2. Desgaste Leve (Naranja)'
+        ELSE '3. Crítico - Reemplazo (Rojo)'
+    END AS estado_calibracion
 FROM dw.fact_evento_sismico f
 JOIN dw.dim_estacion e ON f.id_estacion = e.id_estacion
 WHERE f.error_rms IS NOT NULL
@@ -120,25 +107,7 @@ HAVING COUNT(f.id_hecho) >= 10;
 
 ### Paso 2 — Crear el Chart
 
-1. Desde el dataset, hacer clic en **Explore**
-2. En **Chart Type**, seleccionar **deck.gl Screen Grid**
-3. Configurar el panel **Query**:
-
-| Campo | Valor |
-|---|---|
-| Longitude & Latitude | `longitud` \| `latitud` |
-| Weight | `AVG(error_promedio)` |
-| Row limit | `10000` |
-
-4. Configurar el panel **Map**:
-
-| Campo | Valor |
-|---|---|
-| Map Style | Topography (OSM) |
-| Color Scheme | Reds |
-
-5. Hacer clic en **Update Chart**
-6. Guardar como `Degradación de Calibración por Canal`
+Al final se explica
 
 ### Paso 3 — Agregar filtro por canal en el Dashboard
 

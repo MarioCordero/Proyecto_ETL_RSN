@@ -114,7 +114,7 @@ Proyecto_ETL_RSN/
 
   #### 5. Ejecutar el pipeline
   ```bash
-  # Carga completa (las 3 fuentes)
+  # Carga completa (las 4 fuentes)
   .venv/bin/python -m etl.pipeline --file data/raw/Catalogo_RSN_v2022.txt
   ```
 
